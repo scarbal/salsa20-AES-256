@@ -4,7 +4,7 @@ from Crypto.Util.Padding import unpad
 
 # Crear el cliente
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client_socket.connect(('192.168.1.61', 12346))
+client_socket.connect(('192.168.1.61', 12346)) #ingresar ipv4 del servidor
 
 # Leer la llave AES de un archivo (simulando la recepción por un canal alterno)
 with open('aes_keyfile.bin', 'rb') as key_file:
