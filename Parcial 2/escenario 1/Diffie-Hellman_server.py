@@ -73,7 +73,7 @@ def server():
     print(f"Servidor: Llave simétrica derivada: {key.hex()}")
 
     # Ciclo de recepción y descifrado de 100 mensajes
-    for i in range(1):
+    for i in range(100):
         # Recibir el mensaje cifrado del cliente
         ciphertext = client_socket.recv(1024)
         total_bytes_received += len(ciphertext)
