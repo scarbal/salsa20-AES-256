@@ -1,62 +1,82 @@
-import socket
-import pickle
 from Crypto.PublicKey import ElGamal
-from Crypto.Random import get_random_bytes
+import json
+import socket
+import base64
+import os
 
-def load_keys():
-    # Cargar la clave privada
-    with open('private_key.pkl', 'rb') as f:
-        private_key = pickle.load(f)
-    # Cargar la clave pública
-    with open('public_key.pkl', 'rb') as f:
-        public_key = pickle.load(f)
-    return private_key, public_key
+# Crear socket
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.bind(('localhost', 65433))
+server_socket.listen(1)
+print("Servidor ElGamal en espera...")
 
-def elgamal_decrypt(private_key, encrypted_message):
-    return private_key.decrypt(encrypted_message)
+# Obtener la ruta del directorio actual
+current_directory = os.path.dirname(os.path.abspath(__file__))
+private_key_path = os.path.join(current_directory, "sk.json")
 
-def server():
-    # Crear el servidor
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(('localhost', 65433))
-    server_socket.listen(1)
-    print("Servidor ElGamal: Esperando conexión...")
+# Cargar la llave privada
+with open(private_key_path, "r") as f:
+    private_key_data = json.load(f)
 
-    conn, addr = server_socket.accept()
-    print(f"Servidor ElGamal: Conectado con {addr}")
+# Reconstruir la clave privada de ElGamal
+p = int(private_key_data['p'])
+g = int(private_key_data['g'])
+y = int(private_key_data['y'])
+x = int(private_key_data['x'])
 
-    # Cargar claves ElGamal
-    private_key, public_key = load_keys()
-    
-    # Enviar la clave pública al cliente
-    public_key_bytes = public_key.export_key(format='DER')
-    conn.send(public_key_bytes)
-    print("Servidor ElGamal: Clave pública enviada al cliente.")
+# Función para descifrar usando ElGamal
+def elgamal_decrypt(c1, c2, p, x):
+    s = pow(c1, x, p)
+    m = (c2 * pow(s, p-2, p)) % p
+    return m
 
-    total_data_transmitted = len(public_key_bytes)  # Tamaño de la clave pública
+# Esperar la conexión del cliente
+conn, addr = server_socket.accept()
+print(f"Conexión establecida con: {addr}")
 
-    # Ciclo de recepción y descifrado de 50 mensajes
-    for i in range(50):
-        # Recibir mensaje cifrado del cliente
-        encrypted_message_bytes = conn.recv(4096)
-        if not encrypted_message_bytes:
+# Inicializar contadores para el tamaño de la información
+total_received_size = 0
+total_sent_size = 0
+
+# Mensaje estático que se enviará al cliente
+static_response_message = "Este es un mensaje estático del servidor."
+
+# Crear un ciclo para recibir y responder a los mensajes cifrados
+while True:
+    try:
+        # Recibir los valores cifrados del cliente
+        cipher_text_b64_c1 = conn.recv(1024).decode()
+        cipher_text_b64_c2 = conn.recv(1024).decode()
+
+        if not cipher_text_b64_c1 or not cipher_text_b64_c2:
             break
-        # Convertir el mensaje recibido en una tupla
-        encrypted_message = eval(encrypted_message_bytes.decode('utf-8'))  
-        print(f"Servidor ElGamal: Mensaje cifrado recibido: {encrypted_message}")
 
-        # Sumar el tamaño del mensaje cifrado a la cantidad total transmitida
-        total_data_transmitted += len(encrypted_message_bytes)
+        # Decodificar y descifrar
+        c1 = int(base64.b64decode(cipher_text_b64_c1).decode())
+        c2 = int(base64.b64decode(cipher_text_b64_c2).decode())
+        decrypted_message_int = elgamal_decrypt(c1, c2, p, x)
+        decrypted_message = decrypted_message_int.to_bytes((decrypted_message_int.bit_length() + 7) // 8, 'big').decode('utf-8', errors='ignore')
+        print(f"Cliente: {decrypted_message}")
 
-        # Descifrar el mensaje
-        decrypted_message = elgamal_decrypt(private_key, encrypted_message)
-        print(f"Servidor ElGamal: Mensaje descifrado ({i + 1}): {decrypted_message.decode()}")
+        if decrypted_message.lower() == "exit":
+            print("Conexión cerrada por el cliente.")
+            break
 
-    # Imprimir la cantidad total de información transmitida
-    print(f"Cantidad total de información transmitida: {total_data_transmitted} bytes")
+        # Enviar la respuesta estática al cliente 10 veces
+        for i in range(1):
+            response_b64 = base64.b64encode(static_response_message.encode()).decode()
+            conn.sendall(response_b64.encode())
+            total_sent_size += len(response_b64.encode())
 
-    conn.close()
-    server_socket.close()
+        # Calcular el tamaño total de la información recibida
+        total_received_size += (len(cipher_text_b64_c1.encode()) + len(cipher_text_b64_c2.encode()))
+        
+        print(f"Total de información recibida: {total_received_size} bytes")
+        print(f"Total de información enviada: {total_sent_size} bytes")
 
-if __name__ == "__main__":
-    server()
+    except Exception as e:
+        print(f"Error durante la comunicación: {e}")
+        break
+
+conn.close()
+server_socket.close()
