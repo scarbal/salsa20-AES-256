@@ -1,4 +1,5 @@
 import socket
+import time
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes, serialization
 
@@ -33,6 +34,7 @@ def client():
 
         # Enviar el mensaje cifrado al servidor
         client_socket.send(encrypted_message)
+        time.sleep(2)
 
     client_socket.close()
 
